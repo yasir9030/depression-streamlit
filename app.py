@@ -18,8 +18,13 @@ except ModuleNotFoundError:
     except Exception:
         pass
 
-# Import CatBoost explicitly
-from catboost import CatBoostClassifier
+# Import CatBoost with automatic self-install fallback
+try:
+    from catboost import CatBoostClassifier
+except ModuleNotFoundError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "catboost"])
+    from catboost import CatBoostClassifier
 
 # ==========================================================
 # PAGE CONFIGURATION
