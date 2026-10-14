@@ -3,6 +3,23 @@ import numpy as np
 import pandas as pd
 import pickle
 import os
+import sys
+
+# ==========================================================
+# NUMPY COMPATIBILITY SHIM (Cross NumPy 1.x & 2.x)
+# ==========================================================
+try:
+    import numpy._core.multiarray
+except ModuleNotFoundError:
+    try:
+        import numpy.core.multiarray
+        sys.modules['numpy._core'] = sys.modules['numpy.core']
+        sys.modules['numpy._core.multiarray'] = sys.modules['numpy.core.multiarray']
+    except Exception:
+        pass
+
+# Import CatBoost explicitly
+from catboost import CatBoostClassifier
 
 # ==========================================================
 # PAGE CONFIGURATION
@@ -91,29 +108,38 @@ st.markdown("""
 # ==========================================================
 @st.cache_resource
 def load_backend_model():
-    candidates = [
-        'Quantum_CatBoost_Model_Qiskit.sav',
+    # Priority 1: CatBoost native CBM format (100% portable, zero pickle/numpy version conflicts)
+    cbm_candidates = [
+        'catboost_model.cbm',
+        'new dataset/catboost_model.cbm',
+        './catboost_model.cbm',
+        './new dataset/catboost_model.cbm'
+    ]
+    for cbm_path in cbm_candidates:
+        if os.path.exists(cbm_path):
+            cb_model = CatBoostClassifier()
+            cb_model.load_model(cbm_path)
+            return cb_model
+
+    # Priority 2: Pickle bundle format (.sav)
+    sav_candidates = [
         'new dataset/Quantum_CatBoost_Model_Qiskit.sav',
         './new dataset/Quantum_CatBoost_Model_Qiskit.sav',
-        r'C:/Users/USER/Desktop/Mental_health/new dataset/Quantum_CatBoost_Model_Qiskit.sav',
-        r'C:\Users\USER\Desktop\Mental_health\new dataset\Quantum_CatBoost_Model_Qiskit.sav'
+        'Quantum_CatBoost_Model_Qiskit.sav',
+        './Quantum_CatBoost_Model_Qiskit.sav'
     ]
-    bundle_path = None
-    for p in candidates:
-        if os.path.exists(p):
-            bundle_path = p
-            break
+    for sav_path in sav_candidates:
+        if os.path.exists(sav_path):
+            with open(sav_path, 'rb') as f:
+                bundle = pickle.load(f)
+            if isinstance(bundle, dict) and 'model' in bundle:
+                return bundle['model']
+            return bundle
             
-    if bundle_path is None:
-        st.error("❌ Model bundle could not be found. Please ensure 'Quantum_CatBoost_Model_Qiskit.sav' exists.")
-        st.stop()
-        
-    with open(bundle_path, 'rb') as f:
-        bundle = pickle.load(f)
-    return bundle
+    st.error("❌ Model file not found. Please ensure 'catboost_model.cbm' or 'Quantum_CatBoost_Model_Qiskit.sav' is uploaded.")
+    st.stop()
 
-bundle = load_backend_model()
-model = bundle['model']
+model = load_backend_model()
 
 def run_backend_prediction(features_list):
     """
